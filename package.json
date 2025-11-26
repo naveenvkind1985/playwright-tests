@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "test": "playwright test",
+    "test:medical": "playwright test tests/e2e/medical/",
+    "test:multilingual": "playwright test tests/e2e/multilingual/",
+    "test:ai": "playwright test tests/e2e/ai-case-processing/",
+    "test:ci": "playwright test --reporter=line,github",
+    "test:report": "playwright show-report",
+    "playwright:install": "playwright install --with-deps"
+  }
+}
