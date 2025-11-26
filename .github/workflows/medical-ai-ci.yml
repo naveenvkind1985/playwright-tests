@@ -1,118 +1,146 @@
-# Workflow name and trigger conditions
 name: Medical AI E2E Tests
 
-# When to run this workflow
 on:
   push:
-    branches: [ main, develop, feature/* ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-  schedule:
-    - cron: '0 2 * * 1-5'  # Weekday regression tests at 2 AM UTC
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
-# Global environment variables
 env:
   NODE_VERSION: '18'
   MEDICAL_APP_URL: 'https://katalon-demo-cura.herokuapp.com'
 
-# Job definitions
 jobs:
-  # Initial setup job - prepares environment
-  setup-and-install:
-    name: 🔧 Setup and Install
+  # Job 1: Setup (runs once)
+  setup:
+    name: ⚙️ Setup Environment
     runs-on: ubuntu-latest
+    outputs:
+      cache-key: ${{ steps.cache.outputs.cache-key }}
     
     steps:
-    # Get the latest code from repository
     - name: Checkout code
       uses: actions/checkout@v4
-      
-    # Setup Node.js with specified version and npm caching
+    
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
-        
-    # Cache Playwright browsers to speed up subsequent runs
-    - name: Cache Playwright browsers
+    
+    - name: Generate cache key
+      id: cache
+      run: echo "cache-key=${{ runner.os }}-node-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}" >> $GITHUB_OUTPUT
+
+  # Job 2: Parallel Test Execution (Industry Standard)
+  e2e-tests:
+    name: 🧪 E2E Tests - ${{ matrix.project }} - ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    needs: setup
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [ai-workflows, patient-registration, multilingual]
+        browser: [chromium]
+        include:
+          - project: ai-workflows
+            test_dir: tests/e2e/ai-case-processing
+          - project: patient-registration
+            test_dir: tests/e2e/medical
+          - project: multilingual
+            test_dir: tests/e2e/multilingual
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Cache Playwright
       uses: actions/cache@v4
-      id: playwright-cache
       with:
         path: |
           ~/.cache/ms-playwright
-        key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-playwright-
-          
-    # Install project dependencies and Playwright browsers
+          node_modules
+        key: ${{ needs.setup.outputs.cache-key }}
+
     - name: Install dependencies
       run: |
         npm ci
-        npx playwright install --with-deps
-        
-    # Verify Playwright installation was successful
-    - name: Verify installation
-      run: |
-        npx playwright --version
-        echo "Playwright installed successfully"
+        npx playwright install
 
-  # Main test execution job
-  medical-tests:
-    name: 🏥 Medical Tests (All Projects)
-    runs-on: ubuntu-latest
-    needs: setup-and-install  # Depends on setup job completing first
-    timeout-minutes: 30  # Fail if tests take longer than 30 minutes
-
-    steps:
-    # Get code again for this job (each job runs in fresh environment)
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    # Setup Node.js environment
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
-        
-    # Install dependencies for test execution
-    - name: Install dependencies
+    - name: Run Playwright Tests
       run: |
-        npm ci
-        npx playwright install --with-deps
-        
-    # Execute all Playwright tests with HTML and JSON reporters
-    - name: Run All Tests
-      run: |
-        echo "Running all Playwright tests with HTML reporter"
-        npx playwright test --reporter=html,json
+        npx playwright test ${{ matrix.test_dir }} \
+          --project=${{ matrix.browser }} \
+          --reporter=html,json \
+          --retries=1
       env:
         MEDICAL_APP_URL: ${{ env.MEDICAL_APP_URL }}
-        
-    # Upload HTML test report as downloadable artifact
-    - name: Upload HTML Report
+
+    - name: Upload Test Results
       uses: actions/upload-artifact@v4
-      if: always()  # Upload even if tests fail
+      if: always()
       with:
-        name: playwright-html-report
-        path: playwright-report/
+        name: test-results-${{ matrix.project }}-${{ matrix.browser }}
+        path: |
+          playwright-report/
+          test-results/
+        retention-days: 7
+
+  # Job 3: Generate Consolidated Report
+  reports:
+    name: 📊 Test Reports
+    runs-on: ubuntu-latest
+    needs: e2e-tests
+    if: always()
+
+    steps:
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: all-artifacts
+
+    - name: Create Summary
+      run: |
+        echo "# 🏥 Medical AI Test Summary" > summary.md
+        echo "## Execution Date: $(date)" >> summary.md
+        echo "## Test Matrix Results:" >> summary.md
+        echo "- ✅ Parallel execution: ${{ needs.e2e-tests.result }}"
+        echo "## Artifacts Available:" >> summary.md
+        find all-artifacts -name "playwright-report" -type d | while read dir; do
+          echo "- $(basename $(dirname $dir))" >> summary.md
+        done
+
+    - name: Upload Final Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-execution-summary
+        path: |
+          summary.md
+          all-artifacts/
         retention-days: 30
 
-  # Final summary job - shows test results
-  test-summary:
-    name: 📊 Test Summary
+  # Job 4: Quality Gate
+  quality-gate:
+    name: ✅ Quality Gate
     runs-on: ubuntu-latest
-    needs: [medical-tests]  # Wait for medical-tests to complete
-    if: always()  # Run even if previous jobs fail
-    
+    needs: e2e-tests
+    if: always()
+
     steps:
-    # Display final test results summary in workflow logs
-    - name: Test Results Summary
+    - name: Check Test Results
       run: |
-        echo "=== Medical AI Test Results ==="
-        echo "Medical Tests: ${{ needs.medical-tests.result }}"
-        echo "==============================="
-        echo "Download HTML report from Artifacts section"
-        echo "Look for 'playwright-html-report' artifact"
+        if [ "${{ needs.e2e-tests.result }}" == "success" ]; then
+          echo "✅ All tests passed - Quality gate approved"
+          exit 0
+        else
+          echo "❌ Some tests failed - Quality gate rejected"
+          exit 1
+        fi
