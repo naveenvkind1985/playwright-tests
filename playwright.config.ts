@@ -1,71 +1,82 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './tests',
+  testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 2 : undefined,
   
-  // ENHANCED REPORTER CONFIGURATION
+  // Custom reporter configuration for organized results
   reporter: [
-    // HTML Reporter with enhanced options
-    ['html', { 
-      open: 'never', // Don't auto-open, use command instead
-      outputFolder: 'playwright-report',
-      // Enhanced HTML report features
-      attachScreenshots: true,
-      showSteps: true,
-      // Include test source code in report
-      printSteps: true,
-      // Better organization
-      outputFile: 'playwright-report/index.html'
-    }],
-    // JSON reporter for CI integration
-    ['json', { 
-      outputFile: 'test-results/test-results.json' 
-    }],
-    // JUnit reporter for test management systems
-    ['junit', { 
-      outputFile: 'test-results/test-results.xml',
-      includeProjectInTestName: true 
-    }],
-    // Line reporter for console output
-    ['line'],
-    // List reporter for better test listing
-    ['list']
+    ['html', { outputFolder: 'playwright-report' }],
+    ['json', { outputFile: 'test-results/test-results.json' }],
+    ['junit', { outputFile: 'test-results/junit-results.xml' }],
+    ['line']
   ],
 
   use: {
-    // Enhanced tracing for better debugging
+    baseURL: 'https://katalon-demo-cura.herokuapp.com',
     trace: 'on-first-retry',
-    // Always capture screenshots on failure
     screenshot: 'only-on-failure',
-    // Capture video for failed tests
     video: 'retain-on-failure',
     
-    // Context options for better debugging
-    viewport: { width: 1280, height: 720 },
-    actionTimeout: 10000,
-    navigationTimeout: 30000,
+    // Custom test ID for organized results
+    testIdAttribute: 'data-testid',
   },
+
+  // Configure output directories for different test types
+  outputDir: 'test-results/',
 
   projects: [
     {
-      name: 'chromium-medical',
+      name: 'ai-workflows',
+      testDir: './tests/e2e/ai-case-processing',
+      outputDir: 'test-results/ai-workflows',
       use: { 
         ...devices['Desktop Chrome'],
-        viewport: { width: 1366, height: 768 },
+        // Custom metadata for AI tests
+        metadata: {
+          category: 'ai-workflows',
+          priority: 'high'
+        }
       },
     },
+    {
+      name: 'patient-registration', 
+      testDir: './tests/e2e/medical',
+      outputDir: 'test-results/patient-registration',
+      use: { 
+        ...devices['Desktop Chrome'],
+        metadata: {
+          category: 'patient-registration',
+          priority: 'high'
+        }
+      },
+    },
+    {
+      name: 'multilingual',
+      testDir: './tests/e2e/multilingual',
+      outputDir: 'test-results/multilingual',
+      use: { 
+        ...devices['Desktop Chrome'],
+        metadata: {
+          category: 'multilingual',
+          priority: 'medium'
+        }
+      },
+    },
+    {
+      name: 'security',
+      testMatch: '**/*.security.test.ts',
+      outputDir: 'test-results/security',
+      use: { 
+        ...devices['Desktop Chrome'],
+        metadata: {
+          category: 'security',
+          priority: 'critical'
+        }
+      },
+    }
   ],
-
-  // Output directory for test artifacts
-  outputDir: 'test-results/',
-
-  // Timeout configuration
-  timeout: 120000,
-  expect: {
-    timeout: 10000
-  }
 });

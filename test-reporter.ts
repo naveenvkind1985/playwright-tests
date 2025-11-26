@@ -1,4 +1,4 @@
-// Enhanced test reporting utility - FIXED VERSION
+// Enhanced test reporting utility 
 export class TestReporter {
   private testInfo: any;
   private startTime: number;
@@ -8,7 +8,7 @@ export class TestReporter {
     this.startTime = Date.now();
   }
 
-  // Enhanced step logging with timing - FIXED
+  // Enhanced step logging with timing 
   async logStep(page: any, stepName: string, description?: string) {
     const stepStartTime = Date.now();
     const elapsedTime = stepStartTime - this.startTime;

@@ -6,7 +6,8 @@ on:
   pull_request:
     branches: [ main, develop ]
   schedule:
-    - cron: '0 2 * * 1-5'  # Automated regression tests at 2 AM UTC on weekdays
+    - cron: '0 2 * * 1-5'  # Weekday regression tests at 2 AM UTC
+  workflow_dispatch:  # Manual trigger
 
 env:
   NODE_VERSION: '18'
@@ -14,7 +15,7 @@ env:
 
 jobs:
   setup-and-install:
-    name: 🔧 Setup and Install Dependencies
+    name: 🔧 Setup and Install
     runs-on: ubuntu-latest
     
     steps:
@@ -45,61 +46,65 @@ jobs:
     - name: Verify installation
       run: |
         npx playwright --version
-        node --version
-        npm --version
+        echo "Playwright installed successfully"
 
-  medical-tests:
-    name: 🏥 Run Medical AI Tests
+  medical-tests-parallel:
+    name: 🏥 Medical Tests (Parallel Shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     needs: setup-and-install
-    timeout-minutes: 30
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Install Playwright browsers
-      run: npx playwright install --with-deps
-      
-    - name: Run Patient Registration Tests
-      run: |
-        npx playwright test tests/e2e/medical/patient-registration.test.ts \
-        --reporter=line,github \
-        --timeout=120000
-      env:
-        MEDICAL_APP_URL: ${{ env.MEDICAL_APP_URL }}
-        
-    - name: Run Medical Terminology Tests
-      run: |
-        npx playwright test tests/e2e/multilingual/medical-terminology.test.ts \
-        --reporter=line,github \
-        --timeout=120000
-      env:
-        MEDICAL_APP_URL: ${{ env.MEDICAL_APP_URL }}
-        
-    - name: Run AI Workflow Tests
-      run: |
-        npx playwright test tests/e2e/ai-case-processing/medical-ai-workflows.test.ts \
-        --reporter=line,github \
-        --timeout=120000
-      env:
-        MEDICAL_APP_URL: ${{ env.MEDICAL_APP_URL }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false  # Continue even if one shard fails
+      matrix:
+        shard: [1, 2, 3]
+        include:
+          - shard: 1
+            test_type: "patient-registration"
+          - shard: 2  
+            test_type: "medical-terminology"
+          - shard: 3
+            test_type: "ai-workflows"
 
-  test-reports:
-    name: 📊 Generate Test Reports
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: |
+        npm ci
+        npx playwright install --with-deps
+        
+    - name: Run Tests in Shards
+      run: |
+        echo "Running shard ${{ matrix.shard }}/3 for ${{ matrix.test_type }}"
+        npx playwright test --shard=${{ matrix.shard }}/3 \
+        --reporter=line,json \
+        --timeout=120000 \
+        --output=test-results/shard-${{ matrix.shard }}
+      env:
+        MEDICAL_APP_URL: ${{ env.MEDICAL_APP_URL }}
+        
+    - name: Upload Shard Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-shard-${{ matrix.shard }}
+        path: |
+          test-results/shard-${{ matrix.shard }}/
+        retention-days: 7
+
+  merge-reports:
+    name: 📊 Merge Test Reports
     runs-on: ubuntu-latest
-    needs: medical-tests
-    if: always()  # Always run even if previous jobs fail
-    
+    needs: medical-tests-parallel
+    if: always()
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -113,36 +118,37 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Download test results
+    - name: Download All Shard Results
       uses: actions/download-artifact@v4
       with:
-        path: test-results
+        path: all-test-results
+        pattern: test-results-shard-*
+        merge-multiple: true
         
-    - name: Generate HTML Report
+    - name: Merge Playwright Reports
       run: |
-        npx playwright show-report test-results --port 8080 || echo "No test results to report"
+        npx playwright merge-reports all-test-results \
+        --reporter=html,json,junit
+        npx playwright show-report playwright-report --port 8080 &
         
-    - name: Upload Playwright Report
+    - name: Upload Merged HTML Report
       uses: actions/upload-artifact@v4
-      if: always()
       with:
-        name: playwright-html-report
+        name: playwright-merged-html-report
         path: playwright-report/
-        retention-days: 7
+        retention-days: 30
         
-    - name: Upload Test Results
+    - name: Upload JUnit Report
       uses: actions/upload-artifact@v4
-      if: always()
       with:
-        name: test-results
+        name: junit-test-results
         path: test-results/
-        retention-days: 7
+        retention-days: 30
 
-  security-scan:
+  security-tests:
     name: 🔒 Security Tests
     runs-on: ubuntu-latest
     needs: setup-and-install
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     
     steps:
     - name: Checkout code
@@ -155,10 +161,203 @@ jobs:
         cache: 'npm'
         
     - name: Install dependencies
-      run: npm ci
-      
+      run: |
+        npm ci
+        npx playwright install --with-deps
+        
     - name: Run Security Tests
       run: |
-        npx playwright test --grep="security" --reporter=line,github
+        npx playwright test --grep="security" \
+        --reporter=line,html \
+        --timeout=120000
       env:
         MEDICAL_APP_URL: ${{ env.MEDICAL_APP_URL }}
+        
+    - name: Upload Security Test Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-test-report
+        path: playwright-report/
+        retention-days: 30
+
+  notifications:
+    name: 📢 Notifications
+    runs-on: ubuntu-latest
+    needs: [medical-tests-parallel, security-tests, merge-reports]
+    if: always()  # Always run, even if tests fail
+    
+    steps:
+    - name: Download Test Results
+      uses: actions/download-artifact@v4
+      with:
+        path: downloaded-results
+        pattern: junit-test-results
+        merge-multiple: true
+        
+    - name: Test Summary Notification
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { readFileSync } = require('fs');
+          
+          // Get workflow information
+          const { owner, repo } = context.repo;
+          const runId = context.runId;
+          const workflow = context.workflow;
+          const commit = context.sha;
+          const actor = context.actor;
+          
+          // Calculate test results
+          const medicalTests = ${{ needs.medical-tests-parallel.result }};
+          const securityTests = ${{ needs.security-tests.result }};
+          const mergeReports = ${{ needs.merge-reports.result }};
+          
+          const allJobs = [medicalTests, securityTests, mergeReports];
+          const successCount = allJobs.filter(result => result === 'success').length;
+          const totalJobs = allJobs.length;
+          
+          // Create status message
+          let status = '✅ Success';
+          let color = 'good';
+          if (medicalTests === 'failure' || securityTests === 'failure') {
+            status = '❌ Failure';
+            color = 'danger';
+          } else if (medicalTests === 'cancelled') {
+            status = '⚠️ Cancelled';
+            color = 'warning';
+          }
+          
+          // Create notification message
+          const message = {
+            blocks: [
+              {
+                type: "header",
+                text: {
+                  type: "plain_text",
+                  text: `Medical AI Tests - ${status}`
+                }
+              },
+              {
+                type: "section",
+                fields: [
+                  {
+                    type: "mrkdwn",
+                    text: `*Repository:* ${owner}/${repo}`
+                  },
+                  {
+                    type: "mrkdwn",
+                    text: `*Workflow:* ${workflow}`
+                  },
+                  {
+                    type: "mrkdwn",
+                    text: `*Triggered by:* ${actor}`
+                  },
+                  {
+                    type: "mrkdwn",
+                    text: `*Jobs passed:* ${successCount}/${totalJobs}`
+                  }
+                ]
+              },
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `*Test Results:*\n• Medical Tests: ${medicalTests}\n• Security Tests: ${securityTests}\n• Report Generation: ${mergeReports}`
+                }
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: {
+                      type: "plain_text",
+                      text: "View Workflow Run"
+                    },
+                    url: `https://github.com/${owner}/${repo}/actions/runs/${runId}`
+                  },
+                  {
+                    type: "button",
+                    text: {
+                      type: "plain_text",
+                      text: "Download Test Report"
+                    },
+                    url: `https://github.com/${owner}/${repo}/actions/runs/${runId}#artifacts`
+                  }
+                ]
+              }
+            ]
+          };
+          
+          // Send to Slack (if webhook configured)
+          if (process.env.SLACK_WEBHOOK_URL) {
+            const https = require('https');
+            const data = JSON.stringify(message);
+            
+            const options = {
+              hostname: 'hooks.slack.com',
+              path: process.env.SLACK_WEBHOOK_URL.replace('https://hooks.slack.com', ''),
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': data.length
+              }
+            };
+            
+            const req = https.request(options, (res) => {
+              console.log(`Slack notification sent: ${res.statusCode}`);
+            });
+            
+            req.write(data);
+            req.end();
+          }
+          
+          // Create GitHub issue comment on PR
+          if (context.payload.pull_request) {
+            const prNumber = context.payload.pull_request.number;
+            const issueComment = {
+              owner,
+              repo,
+              issue_number: prNumber,
+              body: `## Medical AI Test Results ${status}
+              
+**Workflow Results:**
+- ✅ Medical Tests (Parallel): ${medicalTests}
+- 🔒 Security Tests: ${securityTests} 
+- 📊 Report Generation: ${mergeReports}
+
+**View Details:** https://github.com/${owner}/${repo}/actions/runs/${runId}`
+            };
+            
+            github.rest.issues.createComment(issueComment);
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  deploy-notification:
+    name: 🚀 Deployment Ready Check
+    runs-on: ubuntu-latest
+    needs: [medical-tests-parallel, security-tests]
+    if: github.ref == 'refs/heads/main' && needs.medical-tests-parallel.result == 'success' && needs.security-tests.result == 'success'
+    
+    steps:
+    - name: Deployment Ready Notification
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const runId = context.runId;
+          
+          github.rest.repos.createDispatchEvent({
+            owner,
+            repo,
+            event_type: 'deployment-ready',
+            client_payload: {
+              environment: 'production',
+              tests_passed: true,
+              workflow_run: runId
+            }
+          });
+          
+          console.log('Deployment ready event triggered!');

@@ -10,26 +10,38 @@ A comprehensive **Playwright test automation framework** specifically designed f
 
 ### Prerequisites
 
-#### **1. Install Node.js (Version 16 or higher)**
-```bash
-# Download from: https://nodejs.org/
-# Verify installation:
-node --version
-npm --version
+# Install dependencies first
+```
+npm install
 ```
 
-#### **2. Install Playwright and Browsers**
-```bash
-# Install Playwright
-npm install --save-dev @playwright/test
+# Install Playwright browsers
+```
+npx playwright install --with-deps
+```
+# Run all tests
+```
+npm run test:all
+```
 
-# Install browsers (Chromium, Firefox, WebKit)
-npx playwright install
+# Or run specific test suites
+```
+npm run test:patient
+npm run test:terminology  
+npm run test:ai-workflows
+```
+# Run with UI (headed mode)
+```
+npm run test:headed
+```
 
-# Install specific browsers if needed
-npx playwright install chromium
-npx playwright install firefox
-npx playwright install webkit
+# Run in debug mode
+```
+npm run test:debug
+```
+# show reports
+```
+npx playwright show-report
 ```
 
 #### **3. Project Setup**

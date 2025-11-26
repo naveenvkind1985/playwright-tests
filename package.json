@@ -1,11 +1,24 @@
 {
+  "name": "playwright-tests",
+  "version": "1.0.0",
   "scripts": {
     "test": "playwright test",
+    "test:all": "playwright test",
     "test:medical": "playwright test tests/e2e/medical/",
-    "test:multilingual": "playwright test tests/e2e/multilingual/",
+    "test:multilingual": "playwright test tests/e2e/multilingual/", 
     "test:ai": "playwright test tests/e2e/ai-case-processing/",
+    "test:patient": "playwright test tests/e2e/medical/patient-registration.test.ts",
+    "test:terminology": "playwright test tests/e2e/multilingual/medical-terminology.test.ts",
+    "test:ai-workflows": "playwright test tests/e2e/ai-case-processing/medical-ai-workflows.test.ts",
     "test:ci": "playwright test --reporter=line,github",
-    "test:report": "playwright show-report",
-    "playwright:install": "playwright install --with-deps"
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:parallel": "playwright test --workers=3",
+    "playwright:install": "npx playwright install --with-deps",
+    "playwright:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "playwright": "^1.40.0"
   }
 }

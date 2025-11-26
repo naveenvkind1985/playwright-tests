@@ -1,7 +1,7 @@
-// Global test configuration
+// test-config.ts - CLEAN VERSION (Test data only)
 export const TestConfig = {
   // Application URLs
-   baseURL: process.env.MEDICAL_APP_URL || 'https://katalon-demo-cura.herokuapp.com',
+  baseURL: process.env.MEDICAL_APP_URL || 'https://katalon-demo-cura.herokuapp.com',
   
   // Enhanced Timeouts for AI Processing
   timeout: 120000,
