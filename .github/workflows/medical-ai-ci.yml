@@ -1,5 +1,7 @@
+# Workflow name and trigger conditions
 name: Medical AI E2E Tests
 
+# When to run this workflow
 on:
   push:
     branches: [ main, develop, feature/* ]
@@ -9,25 +11,31 @@ on:
     - cron: '0 2 * * 1-5'  # Weekday regression tests at 2 AM UTC
   workflow_dispatch:  # Manual trigger
 
+# Global environment variables
 env:
   NODE_VERSION: '18'
   MEDICAL_APP_URL: 'https://katalon-demo-cura.herokuapp.com'
 
+# Job definitions
 jobs:
+  # Initial setup job - prepares environment
   setup-and-install:
     name: 🔧 Setup and Install
     runs-on: ubuntu-latest
     
     steps:
+    # Get the latest code from repository
     - name: Checkout code
       uses: actions/checkout@v4
       
+    # Setup Node.js with specified version and npm caching
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
         
+    # Cache Playwright browsers to speed up subsequent runs
     - name: Cache Playwright browsers
       uses: actions/cache@v4
       id: playwright-cache
@@ -38,133 +46,73 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-playwright-
           
+    # Install project dependencies and Playwright browsers
     - name: Install dependencies
       run: |
         npm ci
         npx playwright install --with-deps
         
+    # Verify Playwright installation was successful
     - name: Verify installation
       run: |
         npx playwright --version
         echo "Playwright installed successfully"
 
-  medical-tests-parallel:
-    name: 🏥 Medical Tests (Parallel Shard ${{ matrix.shard }}/3)
+  # Main test execution job
+  medical-tests:
+    name: 🏥 Medical Tests (All Projects)
     runs-on: ubuntu-latest
-    needs: setup-and-install
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
+    needs: setup-and-install  # Depends on setup job completing first
+    timeout-minutes: 30  # Fail if tests take longer than 30 minutes
 
     steps:
+    # Get code again for this job (each job runs in fresh environment)
     - name: Checkout code
       uses: actions/checkout@v4
       
+    # Setup Node.js environment
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
         
+    # Install dependencies for test execution
     - name: Install dependencies
       run: |
         npm ci
         npx playwright install --with-deps
         
-    - name: Run Tests in Shards
+    # Execute all Playwright tests with HTML and JSON reporters
+    - name: Run All Tests
       run: |
-        echo "Running shard ${{ matrix.shard }}/3"
-        # Create output directory first
-        mkdir -p test-results/shard-${{ matrix.shard }}
-        # Run tests and handle empty shards gracefully
-        npx playwright test --shard=${{ matrix.shard }}/3 \
-        --reporter=html,json,junit \
-        --timeout=120000 \
-        --output=test-results/shard-${{ matrix.shard }} || echo "No tests in shard ${{ matrix.shard }}"
+        echo "Running all Playwright tests with HTML reporter"
+        npx playwright test --reporter=html,json
       env:
         MEDICAL_APP_URL: ${{ env.MEDICAL_APP_URL }}
         
-    - name: Create placeholder if no test results
-      run: |
-        # Check if test results directory is empty
-        if [ ! -d "test-results/shard-${{ matrix.shard }}" ] || [ -z "$(ls -A test-results/shard-${{ matrix.shard }})" ]; then
-          echo "No test results for shard ${{ matrix.shard }}, creating placeholder"
-          mkdir -p test-results/shard-${{ matrix.shard }}
-          echo "No tests executed in this shard" > test-results/shard-${{ matrix.shard }}/empty-shard.txt
-        fi
-        
-    - name: Upload Shard Results
+    # Upload HTML test report as downloadable artifact
+    - name: Upload HTML Report
       uses: actions/upload-artifact@v4
-      if: always()
+      if: always()  # Upload even if tests fail
       with:
-        name: test-results-shard-${{ matrix.shard }}
-        path: test-results/shard-${{ matrix.shard }}/
-        retention-days: 7
-        # This prevents warning if directory doesn't exist
-        if-no-files-found: warn
-
-  merge-reports:
-    name: 📊 Generate Final Report
-    runs-on: ubuntu-latest
-    needs: medical-tests-parallel
-    if: always()
-
-    steps:
-    - name: Download All Shard Results
-      uses: actions/download-artifact@v4
-      with:
-        path: all-test-results
-        pattern: test-results-shard-*
-        merge-multiple: true
-    
-    - name: Create Consolidated Report
-      run: |
-        # Create a simple consolidated directory
-        mkdir -p consolidated-report
-        
-        # Copy all test results to consolidated directory (if any exist)
-        if [ -d "all-test-results" ] && [ "$(ls -A all-test-results 2>/dev/null)" ]; then
-          echo "Copying test results to consolidated report..."
-          cp -r all-test-results/* consolidated-report/ 2>/dev/null || true
-        else
-          echo "No test results found to consolidate"
-        fi
-        
-        # Create a summary file
-        echo "# Test Execution Summary" > consolidated-report/README.md
-        echo "## Workflow completed: $(date)" >> consolidated-review/README.md
-        echo "" >> consolidated-report/README.md
-        echo "## Shards Executed:" >> consolidated-report/README.md
-        echo "- Shard 1/3: ${{ needs.medical-tests-parallel.result == 'success' && 'Completed' || 'Failed' }}" >> consolidated-report/README.md  
-        echo "- Shard 2/3: ${{ needs.medical-tests-parallel.result == 'success' && 'Completed' || 'Failed' }}" >> consolidated-report/README.md
-        echo "- Shard 3/3: ${{ needs.medical-tests-parallel.result == 'success' && 'Completed' || 'Failed' }}" >> consolidated-report/README.md
-        echo "" >> consolidated-report/README.md
-        echo "Download individual shard reports from the Artifacts section above." >> consolidated-report/README.md
-        
-    - name: Upload Consolidated Report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: playwright-consolidated-report
-        path: consolidated-report/
+        name: playwright-html-report
+        path: playwright-report/
         retention-days: 30
-        if-no-files-found: warn
 
+  # Final summary job - shows test results
   test-summary:
     name: 📊 Test Summary
     runs-on: ubuntu-latest
-    needs: [medical-tests-parallel, merge-reports]
-    if: always()
+    needs: [medical-tests]  # Wait for medical-tests to complete
+    if: always()  # Run even if previous jobs fail
     
     steps:
+    # Display final test results summary in workflow logs
     - name: Test Results Summary
       run: |
         echo "=== Medical AI Test Results ==="
-        echo "Medical Tests: ${{ needs.medical-tests-parallel.result }}"
-        echo "Report Generation: ${{ needs.merge-reports.result }}"
+        echo "Medical Tests: ${{ needs.medical-tests.result }}"
         echo "==============================="
-        echo "View test reports in Artifacts section"
-        echo ""
-        echo "Note: Some shards may not have tests if test files are distributed unevenly"
+        echo "Download HTML report from Artifacts section"
+        echo "Look for 'playwright-html-report' artifact"
