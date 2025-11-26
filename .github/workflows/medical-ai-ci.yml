@@ -130,18 +130,6 @@ jobs:
         path: consolidated-report/
         retention-days: 30
 
-        # Generate comprehensive HTML report from all shards
-        npx playwright test --reporter=html
-        echo "Merged report generated"
-        
-    - name: Upload Merged HTML Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: playwright-merged-html-report
-        path: playwright-report/
-        retention-days: 30
-
-  # Simplified notifications (remove complex Slack setup for now)
   test-summary:
     name: 📊 Test Summary
     runs-on: ubuntu-latest
