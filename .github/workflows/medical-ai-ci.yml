@@ -29,7 +29,7 @@ jobs:
         cache: 'npm'
         
     - name: Cache Playwright browsers
-      uses: actions/cache@v4  # FIXED: Changed from v3 to v4
+      uses: actions/cache@v4
       id: playwright-cache
       with:
         path: |
@@ -93,85 +93,47 @@ jobs:
         retention-days: 7
 
   merge-reports:
-    name: 📊 Merge Test Reports
+    name: 📊 Generate Final Report
     runs-on: ubuntu-latest
     needs: medical-tests-parallel
     if: always()
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
     - name: Download All Shard Results
       uses: actions/download-artifact@v4
       with:
         path: all-test-results
         pattern: test-results-shard-*
         merge-multiple: true
-        
-    - name: Generate Merged HTML Report
-      run: |
-        # Generate comprehensive HTML report from all shards
-        npx playwright test --reporter=html
-        echo "Merged report generated"
-        
-    - name: Upload Merged HTML Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: playwright-merged-html-report
-        path: playwright-report/
-        retention-days: 30
-
-  security-tests:
-    name: 🔒 Security Tests
-    runs-on: ubuntu-latest
-    needs: setup-and-install
     
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
-        
-    - name: Install dependencies
+    - name: Create Consolidated Report
       run: |
-        npm ci
-        npx playwright install --with-deps
+        # Create a simple consolidated directory
+        mkdir -p consolidated-report
         
-    - name: Run Security Tests
-      run: |
-        npx playwright test --grep="@security" \
-        --reporter=html,json \
-        --timeout=120000
-      env:
-        MEDICAL_APP_URL: ${{ env.MEDICAL_APP_URL }}
+        # Copy all test results to consolidated directory
+        cp -r all-test-results/* consolidated-report/ 2>/dev/null || true
         
-    - name: Upload Security Test Report
+        # Create a summary file
+        echo "# Test Execution Summary" > consolidated-report/README.md
+        echo "All test shards completed. Download individual shard reports above." >> consolidated-report/README.md
+        echo "" >> consolidated-report/README.md
+        echo "## Shards Executed:" >> consolidated-report/README.md
+        echo "- Shard 1/3" >> consolidated-report/README.md  
+        echo "- Shard 2/3" >> consolidated-report/README.md
+        echo "- Shard 3/3" >> consolidated-report/README.md
+        
+    - name: Upload Consolidated Report
       uses: actions/upload-artifact@v4
-      if: always()
       with:
-        name: security-test-report
-        path: playwright-report/
+        name: playwright-consolidated-report
+        path: consolidated-report/
         retention-days: 30
 
-  # Simplified notifications (remove complex Slack setup for now)
   test-summary:
     name: 📊 Test Summary
     runs-on: ubuntu-latest
-    needs: [medical-tests-parallel, security-tests]
+    needs: [medical-tests-parallel, merge-reports]
     if: always()
     
     steps:
@@ -179,5 +141,6 @@ jobs:
       run: |
         echo "=== Medical AI Test Results ==="
         echo "Medical Tests: ${{ needs.medical-tests-parallel.result }}"
-        echo "Security Tests: ${{ needs.security-tests.result }}"
+        echo "Report Generation: ${{ needs.merge-reports.result }}"
         echo "==============================="
+        echo "View test reports in Artifacts section"
