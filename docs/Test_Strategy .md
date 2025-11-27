@@ -1,6 +1,4 @@
-Of course. This is an excellent and highly relevant use case. The criticality (medical) and complexity (AI, multilingual) demand a rigorous, multi-layered testing strategy. Here is a complete test strategy, automation approach, and CI/CD integration plan for your AI-powered medical Angular application.
-
----
+**This document outlines the comprehensive test strategy for our AI-powered medical case processing application built with Angular. The strategy employs a risk-based, multi-layered approach ensuring patient safety, regulatory compliance, and software quality throughout the development lifecycle.**
 
 ### **Comprehensive Test Strategy for AI-Powered Medical Case Processing Application**
 
@@ -11,6 +9,7 @@ Of course. This is an excellent and highly relevant use case. The criticality (m
 *   **Compliance & Regulations:** Testing must validate compliance with regulations like HIPAA, GDPR, and medical device standards (e.g., IEC 62304 if applicable).
 *   **"Shift-Left" Mentality:** Integrate testing early in the development lifecycle. This is crucial for the complex AI logic.
 *   **Automation-First:** Maximize test automation to ensure speed, repeatability, and coverage, while recognizing the irreplaceable value of manual exploratory testing for UX and complex scenarios.
+*   **Continuous Quality:** Testing integrated throughout CI/CD pipeline
 
 #### **2. Test Pyramid & Testing Types**
 
@@ -40,7 +39,7 @@ We will implement a robust test pyramid to balance speed, cost, and coverage.
     *   **Critical User Journeys:** e.g., "Upload patient case data -> AI processes and suggests a diagnosis -> Medical expert reviews and confirms/overrides -> Case is closed and logged."
     *   **UI Flows:** Navigation, form submissions, data display.
     *   **Multilingual Workflow:** Execute key journeys in all supported languages.
-*   **Tools:** Cypress, Playwright, or Selenium. **Recommendation: Cypress or Playwright** for their modern architecture and reliability.
+*   **Tools:** Cypress, Playwright, or Selenium. **Recommendation: Playwright** for the modern architecture and reliability.
 
 **Layer 4: Specialized & Non-Functional Testing**
 *   **Performance Testing:**
@@ -99,19 +98,9 @@ We will implement a robust test pyramid to balance speed, cost, and coverage.
 
 The following diagram illustrates the integrated, continuous testing workflow within the CI/CD pipeline:
 
-```mermaid
-flowchart TD
-    A[Developer Commit] --> B[CI Pipeline Triggered]
-    B --> C[Stage 1: Static Analysis & Unit Tests<br>SAST/Code Linting]
-    C --> D[Stage 2: Build & Integration Tests<br>Docker Image Build]
-    D --> E[Stage 3: Deployment to Test Env]
-    E --> F[Stage 4: E2E & API Testing<br>Automated Regression Suite]
-    F --> G{All Tests Pass?}
-    G -- No --> H[Fail Fast<br>Notify Developers]
-    G -- Yes --> I[Stage 5: Non-Functional Tests<br>Performance/Security/A11y]
-    I --> J[Stage 6: Staging Deployment &<br>Manual Validation]
-    J --> K[Stage 7: Canary Release &<br>Production Deployment]
-```
+
+![alt text](deepseek_mermaid_20251127_33ef97.png)
+
 
 Here is a breakdown of the pipeline stages:
 
@@ -173,13 +162,12 @@ Here is a breakdown of the pipeline stages:
     *   **DevOps Engineers:** Maintain the CI/CD pipeline and test infrastructure.
     *   **Medical Experts & QA Analysts:** Perform manual exploratory testing, UAT, and define test cases for complex medical scenarios.
 *   **Recommended Toolstack:**
-    *   **CI/CD:** GitHub Actions, GitLab CI, or Jenkins.
+    *   **CI/CD:** GitHub Actions.
     *   **Unit/Integration:** Jasmine/Karma (Angular), Jest, Supertest.
-    *   **E2E:** Cypress or Playwright.
-    *   **Performance:** k6.
+    *   **E2E:** Playwright.
+    *   **Performance:** Jmeter
     *   **Security:** SonarQube (SAST), OWASP ZAP (DAST), Snyk.
     *   **Visual:** Percy, Applitools.
     *   **Accessibility:** axe-core.
     *   **Reporting & Monitoring:** Allure Reports for test results, Datadog/Splunk for production monitoring.
 
-This strategy provides a robust, automated, and continuous foundation for delivering a high-quality, safe, and reliable AI-powered medical application to the cloud.
